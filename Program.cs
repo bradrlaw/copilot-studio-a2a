@@ -37,7 +37,7 @@ app.MapA2A(copilotAgent, path: "/a2a/copilot-studio", agentCard: new()
     Description = builder.Configuration["A2A:AgentDescription"]
         ?? "An A2A-compatible agent backed by Microsoft Copilot Studio.",
     Version = "1.0",
-    Url = builder.Configuration["A2A:AgentUrl"] ?? "http://localhost:5000/a2a/copilot-studio",
+    Url = builder.Configuration["A2A:AgentUrl"] ?? "http://localhost:5173/a2a/copilot-studio",
     Capabilities = new A2A.AgentCapabilities
     {
         Streaming = false,

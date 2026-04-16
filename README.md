@@ -12,14 +12,13 @@ A2A Client ──JSON-RPC 2.0──▶ This Server ──Direct Line API──�
 
 ### Request Flow
 
-1. An A2A client sends a JSON-RPC 2.0 `tasks/send` request to `/a2a/copilot-studio`
-2. **JsonRpcMiddleware** unwraps the JSON-RPC envelope, passing just the `params` payload to the inner pipeline
-3. The Microsoft Agent Framework routes the request to **CopilotStudioChatClient**, which:
+1. An A2A client sends a JSON-RPC 2.0 `message/send` request to `/a2a/copilot-studio`
+2. The Microsoft Agent Framework (`MapA2A()`) handles JSON-RPC 2.0 natively and routes the request to **CopilotStudioChatClient**, which:
    - Exchanges credentials for a **Direct Line token** (via secret or regional token endpoint)
    - Opens a new Direct Line **conversation**
    - Sends the user's message as a Direct Line **activity**
    - **Polls** for the bot's reply (configurable timeout and interval)
-4. The middleware re-wraps the response into a JSON-RPC 2.0 envelope and returns it to the client
+3. The framework wraps the response into a JSON-RPC 2.0 envelope and returns it to the client
 
 ### Agent Discovery
 
@@ -29,14 +28,14 @@ Other A2A agents discover this one by calling `GET /a2a/copilot-studio/v1/card`,
 
 ```
 ├── Program.cs                          # App startup, DI, endpoint mapping, agent card config
-├── Middleware/
-│   └── JsonRpcMiddleware.cs            # Unwraps/wraps JSON-RPC 2.0 envelopes for A2A compatibility
 ├── Services/
 │   ├── CopilotStudioChatClient.cs      # IChatClient implementation proxying to Direct Line API
 │   └── CopilotStudioOptions.cs         # Strongly-typed configuration (bound to appsettings)
 ├── appsettings.json                    # Default configuration (endpoints, polling, agent card)
 ├── appsettings.Development.json        # Development overrides
-└── CopilotStudioA2A.csproj             # .NET 10 project file and NuGet dependencies
+├── CopilotStudioA2A.csproj             # .NET 10 project file and NuGet dependencies
+└── samples/
+    └── google-adk-client/              # Google ADK sample client (see below)
 ```
 
 ## Prerequisites
@@ -290,3 +289,54 @@ Invoke-RestMethod -Uri http://localhost:5173/a2a/copilot-studio `
 - The A2A NuGet package (`Microsoft.Agents.AI.Hosting.A2A.AspNetCore`) is a **preview** release — APIs may change in future versions
 - Direct Line does not support true streaming, so the `Streaming` capability is set to `false` in the agent card
 - Each A2A request opens a new Direct Line conversation — there is no conversation persistence across requests
+
+## Sample Clients
+
+### Google ADK Client (LLM-Orchestrated)
+
+A full Google ADK orchestrator that uses Gemini to decide when to delegate to the Copilot Studio agent. See [`samples/google-adk-client/README.md`](samples/google-adk-client/README.md) for details.
+
+**Prerequisites:**
+
+- Python 3.12+
+- A [Google Cloud project](https://console.cloud.google.com/) with the **Generative Language API** enabled
+- A [Gemini API key](https://aistudio.google.com/apikey) with an active billing account (free tier may work for limited testing)
+
+**Quick start:**
+
+```bash
+# Install dependencies
+pip install "google-adk[a2a]"
+
+# Set your Gemini API key
+# macOS / Linux:
+export GOOGLE_API_KEY=your-gemini-api-key
+# PowerShell:
+$env:GOOGLE_API_KEY = "your-gemini-api-key"
+
+# Start the A2A server (from repo root)
+dotnet run
+
+# In a second terminal, run the ADK client
+cd samples/google-adk-client
+python client.py
+```
+
+The orchestrator (Gemini) analyzes the user's question and delegates banking-related queries to Copilot Studio via the A2A protocol. Non-banking questions are handled directly by Gemini.
+
+### Direct A2A Client (No LLM Required)
+
+A lightweight client that sends A2A messages directly — no Gemini key or LLM needed. Useful for testing the A2A server in isolation.
+
+```bash
+# Install dependencies
+pip install httpx
+# or: pip install "google-adk[a2a]"  (httpx is included)
+
+# Start the A2A server (from repo root)
+dotnet run
+
+# In a second terminal
+cd samples/google-adk-client
+python direct_client.py
+```

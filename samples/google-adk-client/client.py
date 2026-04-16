@@ -47,7 +47,7 @@ def build_agent() -> Agent:
 
     root_agent = Agent(
         name="orchestrator",
-        model="gemini-2.0-flash-lite",
+        model="gemini-2.5-flash",
         instruction="""You are a helpful orchestrator agent. When the user asks about
 banking topics (branch hours, accounts, transfers, etc.), delegate to the
 copilot_studio_banking agent. For other topics, respond directly.""",
