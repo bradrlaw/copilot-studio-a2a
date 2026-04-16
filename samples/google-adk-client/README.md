@@ -8,7 +8,7 @@ A sample client that uses **Google's Agent Development Kit (ADK)** to connect to
 User ──▶ Google ADK Orchestrator (Gemini) ──A2A──▶ Copilot Studio A2A Server ──Direct Line──▶ Copilot Studio Agent
 ```
 
-The ADK orchestrator agent (powered by Gemini) decides when to delegate to the remote Copilot Studio banking agent based on the user's query. Non-banking questions are handled directly by Gemini.
+The examples in this sample assume the Copilot Studio agent is a **virtual banking agent** that can answer questions about branch hours, account inquiries, transfers, and general banking help. The ADK orchestrator agent (powered by Gemini) decides when to delegate to the remote Copilot Studio banking agent based on the user's query. Non-banking questions are handled directly by Gemini. To use a different agent, update the orchestrator instructions and sub-agent description in `client.py`.
 
 ## Prerequisites
 

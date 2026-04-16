@@ -180,6 +180,8 @@ Once this server is publicly accessible:
 
 ## Testing Locally
 
+> **Note:** The examples below assume the Copilot Studio agent being connected to is a **virtual banking agent** that can answer questions about branch hours, account inquiries, transfers, and general banking help. Replace the sample messages with questions relevant to your own agent.
+
 ### 1. Verify the Server Starts
 
 ```bash
@@ -322,7 +324,7 @@ cd samples/google-adk-client
 python client.py
 ```
 
-The orchestrator (Gemini) analyzes the user's question and delegates banking-related queries to Copilot Studio via the A2A protocol. Non-banking questions are handled directly by Gemini.
+The examples assume the Copilot Studio agent is a **virtual banking agent** that can answer questions about branch hours, accounts, and general banking help. The orchestrator (Gemini) analyzes the user's question and delegates banking-related queries to Copilot Studio via the A2A protocol. Non-banking questions are handled directly by Gemini. Adjust the orchestrator instructions and sample queries for your own agent.
 
 ### Direct A2A Client (No LLM Required)
 
