@@ -26,7 +26,7 @@ A2A Client ──JSON-RPC 2.0──▶ This Server ──Direct Line API──�
 | `Services/CopilotStudioChatClient.cs` | `IChatClient` implementation that proxies to Copilot Studio via Direct Line (token exchange → start conversation → send message → poll for response) |
 | `Services/CopilotStudioOptions.cs` | Strongly-typed config POCO bound to `CopilotStudio` section in appsettings |
 | `appsettings.json` | Default configuration including Direct Line endpoint, polling settings, and A2A agent card metadata |
-| `samples/google-adk-client/` | Google ADK sample: orchestrator client (`client.py`) and direct A2A client (`direct_client.py`) |
+| `samples/google_adk_client/` | Google ADK sample: orchestrator client (`client.py`) and direct A2A client (`direct_client.py`) |
 
 ## Endpoints
 

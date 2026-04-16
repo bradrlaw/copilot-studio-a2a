@@ -35,7 +35,7 @@ Other A2A agents discover this one by calling `GET /a2a/copilot-studio/v1/card`,
 ├── appsettings.Development.json        # Development overrides
 ├── CopilotStudioA2A.csproj             # .NET 10 project file and NuGet dependencies
 └── samples/
-    └── google-adk-client/              # Google ADK sample client (see below)
+    └── google_adk_client/              # Google ADK sample client (see below)
 ```
 
 ## Prerequisites
@@ -296,7 +296,7 @@ Invoke-RestMethod -Uri http://localhost:5173/a2a/copilot-studio `
 
 ### Google ADK Client (LLM-Orchestrated)
 
-A full Google ADK orchestrator that uses Gemini to decide when to delegate to the Copilot Studio agent. See [`samples/google-adk-client/README.md`](samples/google-adk-client/README.md) for details.
+A full Google ADK orchestrator that uses Gemini to decide when to delegate to the Copilot Studio agent. See [`samples/google_adk_client/README.md`](samples/google_adk_client/README.md) for details.
 
 **Prerequisites:**
 
@@ -320,11 +320,34 @@ $env:GOOGLE_API_KEY = "your-gemini-api-key"
 dotnet run
 
 # In a second terminal, run the ADK client
-cd samples/google-adk-client
+cd samples/google_adk_client
 python client.py
 ```
 
 The examples assume the Copilot Studio agent is a **virtual banking agent** that can answer questions about branch hours, accounts, and general banking help. The orchestrator (Gemini) analyzes the user's question and delegates banking-related queries to Copilot Studio via the A2A protocol. Non-banking questions are handled directly by Gemini. Adjust the orchestrator instructions and sample queries for your own agent.
+
+### ADK Web UI (Interactive Browser Chat)
+
+The Google ADK includes a built-in web interface for testing agents interactively. This is the easiest way to experiment with different messages:
+
+```bash
+# Set your Gemini API key (if not already set)
+# macOS / Linux:
+export GOOGLE_API_KEY=your-gemini-api-key
+# PowerShell:
+$env:GOOGLE_API_KEY = "your-gemini-api-key"
+
+# Start the A2A server (from repo root)
+dotnet run
+
+# In a second terminal, run the ADK web UI from the samples/ directory
+cd samples
+adk web .
+```
+
+Then open **http://127.0.0.1:8000** in your browser, select **google_adk_client** from the agent dropdown, and start chatting.
+
+> **Important:** Run `adk web .` from the `samples/` directory (the parent of the agent folder), not from inside `google_adk_client/`. ADK discovers agents by scanning subdirectories for `__init__.py` files that export a `root_agent`.
 
 ### Direct A2A Client (No LLM Required)
 
@@ -339,7 +362,7 @@ pip install httpx
 dotnet run
 
 # In a second terminal
-cd samples/google-adk-client
+cd samples/google_adk_client
 python direct_client.py
 ```
 

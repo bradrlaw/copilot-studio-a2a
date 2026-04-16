@@ -61,7 +61,7 @@ The examples in this sample assume the Copilot Studio agent is a **virtual banki
 ### Interactive CLI
 
 ```bash
-cd samples/google-adk-client
+cd samples/google_adk_client
 python client.py
 ```
 
@@ -83,21 +83,21 @@ Banking questions are delegated to Copilot Studio; other questions are answered 
 
 ### ADK Web UI
 
-ADK includes an interactive web UI for testing agents:
+ADK includes an interactive web UI for testing agents. Run `adk web` from the `samples/` directory (the **parent** of the agent folder — ADK discovers agents by folder name):
 
 ```bash
-cd samples/google-adk-client
+cd samples
 adk web .
 ```
 
-This opens a browser-based chat interface where you can interact with the orchestrator and see it delegate to Copilot Studio.
+Then open **http://127.0.0.1:8000** in your browser, select **google_adk_client** from the agent dropdown, and start chatting.
 
 ## Running the Direct Client (No LLM Required)
 
 If you don't have a Gemini API key, or want to test the A2A server in isolation without an LLM orchestrator:
 
 ```bash
-cd samples/google-adk-client
+cd samples/google_adk_client
 python direct_client.py
 ```
 
