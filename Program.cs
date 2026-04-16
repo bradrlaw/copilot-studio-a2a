@@ -1,5 +1,4 @@
 using A2A.AspNetCore;
-using CopilotStudioA2A.Middleware;
 using CopilotStudioA2A.Services;
 using Microsoft.Agents.AI.Hosting;
 using Microsoft.Extensions.AI;
@@ -23,8 +22,6 @@ var copilotAgent = builder.AddAIAgent("copilot-studio",
     instructions: "You are a proxy to a Copilot Studio agent. Forward all user messages and return responses.");
 
 var app = builder.Build();
-
-app.UseMiddleware<JsonRpcMiddleware>();
 
 app.MapOpenApi();
 app.UseSwagger();
