@@ -179,13 +179,46 @@ Once this server is publicly accessible:
 2. Paste the URL: `https://your-public-url/a2a/copilot-studio`
 3. Copilot Studio will fetch the agent card and begin routing relevant tasks to your agent
 
-## Testing with curl
+## Testing Locally
+
+### 1. Verify the Server Starts
 
 ```bash
-# Fetch the agent card
-curl http://localhost:5173/a2a/copilot-studio/v1/card
+dotnet run
+```
 
-# Send a message
+You should see:
+
+```
+Now listening on: http://localhost:5173
+Application started. Press Ctrl+C to shut down.
+```
+
+### 2. Health Check (no credentials needed)
+
+```bash
+curl http://localhost:5173/health
+```
+
+Expected response:
+
+```json
+{ "status": "healthy" }
+```
+
+### 3. Agent Card Discovery (no credentials needed)
+
+```bash
+curl http://localhost:5173/a2a/copilot-studio/v1/card
+```
+
+Expected response — a JSON object containing `name`, `description`, `url`, `capabilities`, and `protocolVersion`.
+
+### 4. Send a Message (requires Direct Line credentials)
+
+The A2A protocol (v0.3.0) uses JSON-RPC 2.0 with the `message/send` method. Each message requires a `kind`, `messageId`, `role`, and `parts` array:
+
+```bash
 curl -X POST http://localhost:5173/a2a/copilot-studio \
   -H "Content-Type: application/json" \
   -d '{
@@ -201,6 +234,55 @@ curl -X POST http://localhost:5173/a2a/copilot-studio \
       }
     }
   }'
+```
+
+Expected response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "result": {
+    "kind": "message",
+    "role": "agent",
+    "parts": [{ "kind": "text", "text": "Hello, how can I help you today?" }],
+    "messageId": "...",
+    "contextId": "..."
+  }
+}
+```
+
+### Troubleshooting
+
+| Error | Cause | Fix |
+|---|---|---|
+| `Failed to generate Direct Line token` | Missing or invalid Direct Line secret | Verify secret with `dotnet user-secrets list` |
+| `IntegratedAuthenticationNotSupportedInChannel` | Copilot Studio agent has authentication enabled | In Copilot Studio → **Settings → Security → Authentication** → set to **No authentication** |
+| `No response from Copilot Studio within 60 seconds` | Bot didn't reply in time | Increase `ResponseTimeoutSeconds` in `appsettings.json`, or check that the agent is published |
+
+### PowerShell (Windows)
+
+```powershell
+# Health check
+Invoke-RestMethod http://localhost:5173/health
+
+# Send a message
+$body = @{
+    jsonrpc = "2.0"
+    id = "1"
+    method = "message/send"
+    params = @{
+        message = @{
+            kind = "message"
+            messageId = "msg-001"
+            role = "user"
+            parts = @(@{ kind = "text"; text = "Hello!" })
+        }
+    }
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod -Uri http://localhost:5173/a2a/copilot-studio `
+  -Method Post -ContentType "application/json" -Body $body
 ```
 
 ## Known Limitations
