@@ -342,3 +342,38 @@ dotnet run
 cd samples/google-adk-client
 python direct_client.py
 ```
+
+### Automated Test Script
+
+A Python script that hits all server endpoints and reports pass/fail:
+
+```bash
+# Install dependencies
+pip install httpx
+
+# Start the A2A server (from repo root)
+dotnet run
+
+# In a second terminal, run the test suite
+python samples/test_server.py
+```
+
+Options:
+
+| Flag | Description |
+|---|---|
+| `--url URL` | Base URL of the A2A server (default: `http://localhost:5173`) |
+| `--message TEXT` | Custom message to send in the message/send test (default: `Hello!`) |
+| `--skip-send` | Skip the message/send test (if no Direct Line credentials are configured) |
+
+Example with a custom message:
+
+```bash
+python samples/test_server.py --message "what hours are your branches open?"
+```
+
+Example skipping the Direct Line call (tests health + agent card only):
+
+```bash
+python samples/test_server.py --skip-send
+```
