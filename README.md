@@ -185,18 +185,19 @@ Once this server is publicly accessible:
 # Fetch the agent card
 curl http://localhost:5173/a2a/copilot-studio/v1/card
 
-# Send a task
+# Send a message
 curl -X POST http://localhost:5173/a2a/copilot-studio \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
     "id": "1",
-    "method": "tasks/send",
+    "method": "message/send",
     "params": {
-      "id": "task-001",
       "message": {
+        "kind": "message",
+        "messageId": "msg-001",
         "role": "user",
-        "parts": [{ "type": "text", "text": "Hello!" }]
+        "parts": [{ "kind": "text", "text": "Hello!" }]
       }
     }
   }'
