@@ -13,7 +13,7 @@ A2A Client ──JSON-RPC 2.0──▶ This Server ──Direct Line API──�
 ## Tech Stack
 
 - **Runtime**: .NET 10 / ASP.NET Core
-- **A2A Protocol**: `Microsoft.Agents.AI.Hosting.A2A.AspNetCore` (preview NuGet package from Microsoft Agent Framework)
+- **A2A Protocol**: `Microsoft.Agents.AI.Hosting.A2A.AspNetCore` (preview NuGet package from Microsoft Agent Framework) — handles JSON-RPC 2.0 natively via `MapA2A()`
 - **Chat Abstraction**: `Microsoft.Extensions.AI.IChatClient` — the standard .NET AI chat interface
 - **Bot Connectivity**: Bot Framework Direct Line API v3
 - **API Docs**: Swagger / OpenAPI via Swashbuckle
@@ -25,8 +25,8 @@ A2A Client ──JSON-RPC 2.0──▶ This Server ──Direct Line API──�
 | `Program.cs` | App startup — registers DI services, maps A2A endpoints, configures the agent card |
 | `Services/CopilotStudioChatClient.cs` | `IChatClient` implementation that proxies to Copilot Studio via Direct Line (token exchange → start conversation → send message → poll for response) |
 | `Services/CopilotStudioOptions.cs` | Strongly-typed config POCO bound to `CopilotStudio` section in appsettings |
-| `Middleware/JsonRpcMiddleware.cs` | ASP.NET middleware that unwraps incoming JSON-RPC 2.0 envelopes and re-wraps responses, providing protocol compatibility |
 | `appsettings.json` | Default configuration including Direct Line endpoint, polling settings, and A2A agent card metadata |
+| `samples/google-adk-client/` | Google ADK sample: orchestrator client (`client.py`) and direct A2A client (`direct_client.py`) |
 
 ## Endpoints
 
@@ -62,5 +62,5 @@ The `A2A` config section controls the agent card metadata (`AgentName`, `AgentDe
 
 - The A2A NuGet package is a **preview** (`1.0.0-preview.*`); APIs may change
 - Direct Line does not support true streaming — `GetStreamingResponseAsync` returns a single update
-- The JSON-RPC middleware handles both SSE-format and plain JSON responses from the inner pipeline
-- Error responses from the inner pipeline are wrapped in JSON-RPC error objects with the original status code
+- The A2A protocol version is **0.3.0** — uses `message/send` method (not `tasks/send`), `kind` field (not `type`), and requires `messageId` on messages
+- Each A2A request opens a new Direct Line conversation — there is no conversation persistence across requests

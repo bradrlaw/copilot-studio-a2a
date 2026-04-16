@@ -1,6 +1,33 @@
 @CopilotStudioA2A_HostAddress = http://localhost:5173
 
-GET {{CopilotStudioA2A_HostAddress}}/weatherforecast/
+### Health check
+GET {{CopilotStudioA2A_HostAddress}}/health
 Accept: application/json
+
+###
+
+### Agent card discovery
+GET {{CopilotStudioA2A_HostAddress}}/a2a/copilot-studio/v1/card
+Accept: application/json
+
+###
+
+### Send an A2A message
+POST {{CopilotStudioA2A_HostAddress}}/a2a/copilot-studio
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "method": "message/send",
+  "params": {
+    "message": {
+      "kind": "message",
+      "messageId": "msg-001",
+      "role": "user",
+      "parts": [{ "kind": "text", "text": "Hello!" }]
+    }
+  }
+}
 
 ###
