@@ -55,7 +55,12 @@ The `A2A` config section controls the agent card metadata (`AgentName`, `AgentDe
 
 When `EnableAuthPassthrough` is `true`:
 - A2A endpoints require a valid Entra ID bearer token
-- The server derives an opaque per-user ID (SHA-256 of tenant+subject) and passes it as the Direct Line `user.id`
+- **SSO mode**: When a bearer token is present and Copilot Studio auth is configured, the server performs an SSO token exchange:
+  1. Direct Line token is generated **without** a trusted `dl_` user ID (to allow the bot's Sign In topic to trigger)
+  2. The bot sends an OAuthCard challenge
+  3. The server intercepts it and sends a `signin/tokenExchange` invoke with the caller's original bearer token
+  4. The bot receives the user's identity and can make API calls on their behalf
+- **Phase 1 only** (no SSO config): Uses an opaque per-user ID (SHA-256 of tenant+subject) passed as the Direct Line `user.id`
 - See [docs/authentication.md](../docs/authentication.md) for the full setup guide
 
 ## Coding Conventions
