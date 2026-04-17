@@ -53,19 +53,6 @@ public class CopilotStudioOptions
     public string? ClientId { get; set; }
 
     /// <summary>
-    /// The Entra ID application client secret for this A2A server.
-    /// Required for Phase 2 SSO token exchange (On-Behalf-Of flow).
-    /// </summary>
-    public string? ClientSecret { get; set; }
-
-    /// <summary>
-    /// The target scopes for the OBO token exchange to Copilot Studio.
-    /// Space-separated. Example: "profile openid"
-    /// Required for Phase 2 SSO token exchange.
-    /// </summary>
-    public string? SsoScopes { get; set; }
-
-    /// <summary>
     /// Nested Entra ID / Azure AD configuration for Microsoft.Identity.Web.
     /// Bound from CopilotStudio:AzureAd in appsettings.
     /// </summary>

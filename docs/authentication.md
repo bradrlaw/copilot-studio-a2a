@@ -137,9 +137,32 @@ Phase 1 is now complete. Your A2A endpoint is protected, and each authenticated 
 
 ## Phase 2: Copilot Studio SSO Integration
 
-Phase 2 configures Copilot Studio to recognize authenticated users, enabling the agent to provide personalized responses without prompting users to sign in again. This builds on Phase 1 — complete Phase 1 first.
+Phase 2 configures Copilot Studio to authenticate users via SSO (Single Sign-On). When a user sends an authenticated request to the A2A endpoint, their Entra ID token is exchanged with Copilot Studio so the agent can make API calls **on behalf of the user** — without prompting them to sign in again. This builds on Phase 1 — complete Phase 1 first.
 
-> **Current status**: When configured as described below, Copilot Studio accepts authenticated requests via Direct Line without displaying sign-in prompts. Reactive OAuthCard token exchange handling is implemented in the server for scenarios where the agent requires explicit SSO. See [Known Limitations](#known-limitations) for details.
+### How SSO Works
+
+```
+Caller (A2A Client)
+  │  Authorization: Bearer <Entra ID token>
+  ▼
+┌──────────────────────────────────────────┐
+│      Copilot Studio A2A Server           │
+│                                          │
+│  1. Validate JWT (Entra ID)              │
+│  2. Start Direct Line conversation       │
+│     (no trusted dl_ user ID)             │
+│  3. Send user's message                  │
+│  4. Bot sends OAuthCard challenge        │
+│  5. Server intercepts OAuthCard          │
+│  6. Server sends signin/tokenExchange    │
+│     with caller's original bearer token  │
+│  7. Bot Framework validates token        │
+│  8. Bot receives user's identity + token │
+│  9. Bot responds with authenticated data │
+└──────────────────────────────────────────┘
+```
+
+> **Key insight**: In SSO mode, the server does NOT embed a `dl_`-prefixed user ID in the Direct Line token. Using a `dl_` prefix creates a "trusted" session that suppresses the bot's Sign In topic, preventing it from sending the OAuthCard needed for SSO. Instead, the user's identity is established entirely through the token exchange.
 
 ### Step 2.1: Add a Client Secret to Your App Registration
 
@@ -151,7 +174,7 @@ Phase 2 configures Copilot Studio to recognize authenticated users, enabling the
 4. Click **Add**
 5. **Copy the secret value immediately** — it won't be shown again
 
-> ⚠️ **Security**: This client secret will be shared between the A2A server and Copilot Studio. Treat compromise of either system as compromise of the integration. Store it in a vault or user-secrets, never in source control. When rotating the secret, update both the A2A server config and Copilot Studio simultaneously.
+> ⚠️ **Security**: This client secret will be shared between the A2A server and Copilot Studio. Treat compromise of either system as compromise of the integration. Store it in a vault or user-secrets, never in source control.
 
 ### Step 2.2: Add a Redirect URI
 
@@ -164,6 +187,8 @@ The Bot Framework's token service needs a redirect URI registered in your app.
    - ✅ **Access tokens**
    - ✅ **ID tokens**
 5. Click **Configure**
+
+> ⚠️ If you skip this step or forget to enable implicit grant tokens, you'll get `AADSTS500113: No reply address is registered for the application` errors in Copilot Studio, and the token exchange will fail with 502 from Direct Line.
 
 ### Step 2.3: Add API Permissions
 
@@ -200,35 +225,32 @@ Copilot Studio needs your app to have identity-related permissions for SSO.
 
 > ⚠️ **Important**: Use **"Microsoft Entra ID v2 with client secrets"** as the service provider. Other options like "Federated Credentials" are not compatible with the Direct Line SSO flow used by this bridge.
 
-### Step 2.5: Configure the A2A Server for SSO
+### Step 2.5: Test Phase 2
 
-Add the client secret and SSO scopes to your server configuration:
+No additional A2A server configuration is needed beyond Phase 1. The SSO token exchange uses the caller's original bearer token directly.
 
-```bash
-dotnet user-secrets set "CopilotStudio:AzureAd:ClientSecret" "<your-client-secret>"
-dotnet user-secrets set "CopilotStudio:SsoScopes" "profile openid"
-```
+1. Restart the server:
+   ```bash
+   dotnet run
+   ```
 
-For production, use environment variables:
-
-```bash
-CopilotStudio__AzureAd__ClientSecret=<your-client-secret>
-CopilotStudio__SsoScopes=profile openid
-```
-
-### Step 2.6: Test Phase 2
-
-1. Restart the server to pick up the new configuration
-2. Get a fresh token and send a request:
+2. Get a token and send a request:
    ```bash
    TOKEN=$(az account get-access-token --resource "api://<client-id>" --query accessToken -o tsv)
 
    curl -X POST http://localhost:5173/a2a/copilot-studio \
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer $TOKEN" \
-     -d '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"m1","role":"user","parts":[{"kind":"text","text":"What hours is the bank open?"}]}}}'
+     -d '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"m1","role":"user","parts":[{"kind":"text","text":"Hello"}]}}}'
    ```
-3. Verify the bot responds with content (not a sign-in prompt like "I'll need you to sign in")
+
+3. In the server logs, you should see:
+   - `ssoMode=True` — SSO mode is active
+   - `Found OAuthCard` — the bot sent an authentication challenge
+   - `Token exchange accepted` — the token was successfully exchanged
+   - `Received post-SSO response` — the bot responded after authentication
+
+4. The bot should respond with content appropriate for the authenticated user, not a sign-in prompt
 
 ---
 
@@ -265,12 +287,11 @@ All settings are under the `CopilotStudio` section in `appsettings.json` or pref
 
 | Setting | Required | Default | Description |
 |---------|----------|---------|-------------|
-| `EnableAuthPassthrough` | No | `false` | Enable JWT validation on A2A endpoints |
+| `EnableAuthPassthrough` | No | `false` | Enable JWT validation and SSO on A2A endpoints |
 | `AzureAd:Instance` | No | `https://login.microsoftonline.com/` | Entra ID authority base URL |
 | `AzureAd:TenantId` | Phase 1+ | *(empty)* | Your Entra ID tenant ID (GUID) |
 | `AzureAd:ClientId` | Phase 1+ | *(empty)* | App Registration client ID (GUID) |
-| `AzureAd:ClientSecret` | Phase 2 | *(empty)* | App Registration client secret (for OBO token exchange) |
-| `SsoScopes` | Phase 2 | *(empty)* | Space-separated scopes for SSO token exchange (e.g., `profile openid`) |
+| `AzureAd:ClientSecret` | No | *(empty)* | App Registration client secret (only needed in Copilot Studio config, not in the A2A server) |
 
 ### Copilot Studio Settings (for Phase 2)
 
@@ -287,7 +308,9 @@ All settings are under the `CopilotStudio` section in `appsettings.json` or pref
 
 ## How User Identity Flows
 
-When authentication is enabled:
+### Without SSO (Phase 1 only or auth disabled)
+
+When authentication is enabled but SSO is not fully configured, or when the bot doesn't require sign-in:
 
 1. The server validates the bearer token using Microsoft Identity Web
 2. It extracts the `oid` (object ID) claim — or falls back to `sub` (subject)
@@ -299,7 +322,20 @@ This ensures:
 - **Determinism**: The same user always gets the same Direct Line user ID
 - **Isolation**: Different users get separate conversation contexts
 
-When authentication is **disabled** (default), the server uses a static user ID, so all callers share the same identity context.
+### With SSO (Phase 2)
+
+When SSO is fully configured and a bearer token is present:
+
+1. The server validates the bearer token
+2. The Direct Line token is generated **without** a user ID (no `dl_` prefix)
+3. The message `from.id` uses an `a2a_<hash>` prefix (non-trusted, allows Sign In topic to trigger)
+4. The bot sends an **OAuthCard** as part of its Sign In topic
+5. The server intercepts the OAuthCard and sends a `signin/tokenExchange` invoke with the caller's original bearer token
+6. Bot Framework validates the token against the Token Exchange URL
+7. The bot receives the user's identity and access token — it can now make API calls as the user
+8. The bot responds with authenticated content
+
+When authentication is **disabled** (default), the server uses a static user ID, and all callers share the same identity context.
 
 ---
 
@@ -343,8 +379,9 @@ When authentication is **disabled** (default), the server uses a static user ID,
 
 ## Known Limitations
 
-- **Proactive SSO**: Sending a `signin/tokenExchange` invoke before the first message consistently returns 502 from Direct Line. The server uses reactive OAuthCard handling instead (responds to OAuthCard challenges when the bot sends them).
-- **SSO scope**: With "Entra ID v2 with client secrets" configured as described, Copilot Studio typically does not send OAuthCard challenges on Direct Line, so the reactive exchange may not be triggered. The bot responds normally without requiring explicit SSO sign-in.
+- **Per-request conversations**: Each A2A request creates a new Direct Line conversation. The SSO token exchange happens once per conversation. Multi-turn conversation support would benefit from conversation reuse (see TODO.md).
 - **Token expiration**: Bearer tokens typically expire after 1 hour. Long-running clients should refresh tokens periodically. The ADK web UI requires restarting with a fresh `A2A_BEARER_TOKEN` when the token expires.
+- **Single auth provider**: Only "Microsoft Entra ID v2 with client secrets" is supported. Federated Credentials and other providers cause `IntegratedAuthenticationNotSupportedInChannel` errors.
+- **SSO adds latency**: The OAuthCard challenge/response adds approximately 2-5 seconds to the first response in each conversation due to the token exchange round trip.
 
 See [TODO.md](../TODO.md) for the full roadmap including planned SSO improvements.

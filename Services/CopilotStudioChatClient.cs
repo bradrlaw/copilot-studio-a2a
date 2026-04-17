@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
-using Microsoft.Identity.Client;
 
 namespace CopilotStudioA2A.Services;
 
@@ -52,15 +51,24 @@ public class CopilotStudioChatClient : IChatClient
         var messageText = userMessage.Text ?? string.Empty;
         var userId = ResolveDirectLineUserId();
 
+        // When SSO is enabled, the user identity is established through the token exchange,
+        // not via a trusted dl_ user ID in the Direct Line token. Using a dl_ prefixed ID
+        // creates a "trusted" session that suppresses the Sign In topic, preventing the bot
+        // from sending the OAuthCard needed for SSO token exchange.
+        var hasBearerToken = !string.IsNullOrEmpty(GetCallerBearerToken());
+        var ssoMode = _options.EnableAuthPassthrough && hasBearerToken;
+        var conversationUserId = ssoMode ? userId?.Replace("dl_", "a2a_") : userId;
+
         try
         {
-            var token = await GetTokenAsync(userId, cancellationToken);
+            var token = await GetTokenAsync(ssoMode ? null : userId, cancellationToken);
             var (conversationId, _) = await StartConversationAsync(token, cancellationToken);
-            _logger.LogInformation("Started Direct Line conversation {ConversationId} for user {UserId}",
-                conversationId, userId ?? "anonymous");
+            _logger.LogInformation(
+                "Started Direct Line conversation {ConversationId} (user={UserId}, ssoMode={SsoMode})",
+                conversationId, conversationUserId ?? "anonymous", ssoMode);
 
-            await SendMessageAsync(token, conversationId, messageText, userId, cancellationToken);
-            var botResponse = await PollForResponseAsync(token, conversationId, userId, cancellationToken);
+            await SendMessageAsync(token, conversationId, messageText, conversationUserId, cancellationToken);
+            var botResponse = await PollForResponseAsync(token, conversationId, conversationUserId, cancellationToken);
 
             return new ChatResponse(new ChatMessage(ChatRole.Assistant, botResponse));
         }
@@ -150,53 +158,14 @@ public class CopilotStudioChatClient : IChatClient
 
     #endregion
 
-    #region SSO / OBO token exchange
-
-    /// <summary>
-    /// Performs an On-Behalf-Of token exchange to get a token suitable for
-    /// Copilot Studio's auth connection, using the caller's inbound bearer token.
-    /// </summary>
-    private async Task<string> ExchangeTokenOboAsync(CancellationToken cancellationToken)
-    {
-        var inboundToken = GetCallerBearerToken()
-            ?? throw new SsoTokenExchangeException("No bearer token available for OBO exchange.");
-
-        var clientId = _options.AzureAd.ClientId ?? _options.ClientId
-            ?? throw new SsoTokenExchangeException("ClientId is required for OBO token exchange.");
-        var clientSecret = _options.AzureAd.ClientSecret ?? _options.ClientSecret
-            ?? throw new SsoTokenExchangeException("ClientSecret is required for OBO token exchange.");
-        var tenantId = _options.AzureAd.TenantId ?? _options.TenantId
-            ?? throw new SsoTokenExchangeException("TenantId is required for OBO token exchange.");
-        var scopes = _options.SsoScopes?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            ?? throw new SsoTokenExchangeException("SsoScopes is required for OBO token exchange.");
-
-        var app = ConfidentialClientApplicationBuilder
-            .Create(clientId)
-            .WithClientSecret(clientSecret)
-            .WithAuthority($"https://login.microsoftonline.com/{tenantId}")
-            .Build();
-
-        try
-        {
-            var result = await app
-                .AcquireTokenOnBehalfOf(scopes, new UserAssertion(inboundToken))
-                .ExecuteAsync(cancellationToken);
-
-            _logger.LogDebug("OBO token exchange succeeded, new token expires at {Expiry}", result.ExpiresOn);
-            return result.AccessToken;
-        }
-        catch (MsalException ex)
-        {
-            _logger.LogError(ex, "OBO token exchange failed: {Error}", ex.Message);
-            throw new SsoTokenExchangeException($"OBO token exchange failed: {ex.Message}", ex);
-        }
-    }
+    #region SSO token exchange
 
     /// <summary>
     /// Sends a signin/tokenExchange invoke activity to Direct Line,
     /// responding to an OAuthCard challenge from the bot.
+    /// Returns true if the exchange was accepted, false if Direct Line returned "retry".
     /// </summary>
-    private async Task SendTokenExchangeAsync(
+    private async Task<bool> SendTokenExchangeAsync(
         string dlToken,
         string conversationId,
         string? userId,
@@ -209,7 +178,11 @@ public class CopilotStudioChatClient : IChatClient
         {
             ["type"] = "invoke",
             ["name"] = "signin/tokenExchange",
-            ["from"] = new JsonObject { ["id"] = userId ?? "a2a-client" },
+            ["from"] = new JsonObject
+            {
+                ["id"] = userId ?? "a2a-client",
+                ["role"] = "user"
+            },
             ["value"] = new JsonObject
             {
                 ["connectionName"] = connectionName,
@@ -217,7 +190,6 @@ public class CopilotStudioChatClient : IChatClient
             }
         };
 
-        // Echo back the tokenExchangeResource.id if present (required by Direct Line SSO protocol)
         if (!string.IsNullOrEmpty(exchangeResourceId))
         {
             activity["value"]!["id"] = exchangeResourceId;
@@ -232,14 +204,36 @@ public class CopilotStudioChatClient : IChatClient
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", dlToken);
 
         var response = await _httpClient.SendAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Token exchange failed with {Status}: {Body}", response.StatusCode, errorBody);
-            response.EnsureSuccessStatusCode(); // throw
+            _logger.LogError("Token exchange failed with {Status}: {Body}", response.StatusCode, responseBody);
+            throw new SsoTokenExchangeException(
+                $"Token exchange returned {response.StatusCode}: {responseBody}");
         }
-        _logger.LogInformation("Sent tokenExchange for connection '{Connection}' in conversation {ConversationId}",
-            connectionName, conversationId);
+
+        _logger.LogInformation(
+            "Token exchange response for '{Connection}' in {ConversationId}: {Status} {Body}",
+            connectionName, conversationId, response.StatusCode, responseBody);
+
+        // Direct Line returns "retry" in the id field when the exchange was not accepted
+        try
+        {
+            var responseJson = JsonNode.Parse(responseBody);
+            var id = responseJson?["id"]?.GetValue<string>();
+            if (string.Equals(id, "retry", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Token exchange returned 'retry' — exchange not accepted");
+                return false;
+            }
+        }
+        catch (JsonException)
+        {
+            // Non-JSON response, treat as success
+        }
+
+        return true;
     }
 
     #endregion
@@ -358,10 +352,26 @@ public class CopilotStudioChatClient : IChatClient
             watermark = json?["watermark"]?.GetValue<string>();
 
             var activities = json?["activities"]?.AsArray();
-            if (activities is not null)
+            if (activities is not null && activities.Count > 0)
             {
-                _logger.LogDebug("Poll returned {Count} activities (exchangeAttempted={Attempted})",
-                    activities.Count, exchangeAttempted);
+                _logger.LogDebug("Poll returned {Count} activities (exchangeAttempted={Attempted}, awaitingPostExchange={Awaiting})",
+                    activities.Count, exchangeAttempted, awaitingPostExchange);
+
+                // Log all activities when in post-exchange state for debugging
+                if (awaitingPostExchange)
+                {
+                    foreach (var act in activities)
+                    {
+                        var actType = act?["type"]?.GetValue<string>();
+                        var actFrom = act?["from"]?["id"]?.GetValue<string>();
+                        var actName = act?["name"]?.GetValue<string>();
+                        var actText = act?["text"]?.GetValue<string>();
+                        _logger.LogDebug(
+                            "  Post-exchange activity: type={Type}, from={From}, name={Name}, text={Text}",
+                            actType, actFrom, actName ?? "(none)",
+                            actText != null ? actText[..Math.Min(actText.Length, 100)] : "(none)");
+                    }
+                }
 
                 // First pass: check for OAuthCard challenges (before returning any text)
                 if (_options.EnableAuthPassthrough && !exchangeAttempted)
@@ -370,42 +380,45 @@ public class CopilotStudioChatClient : IChatClient
                     if (oauthInfo is not null)
                     {
                         exchangeAttempted = true;
-                        _logger.LogInformation("OAuthCard detected (connection: {Connection}), performing SSO token exchange",
-                            oauthInfo.Value.ConnectionName);
+                        _logger.LogInformation(
+                            "OAuthCard detected (connection: {Connection}, uri: {Uri}), performing SSO token exchange",
+                            oauthInfo.Value.ConnectionName, oauthInfo.Value.ExchangeResourceUri ?? "(none)");
 
-                        try
+                        // Use the caller's original bearer token — the bot's auth connection
+                        // expects a token whose audience matches the Token Exchange URL
+                        // (e.g. api://<clientId>), which is the same audience our A2A endpoint validates.
+                        var callerToken = GetCallerBearerToken()
+                            ?? throw new SsoTokenExchangeException(
+                                "No bearer token available for SSO exchange. Ensure the caller is authenticated.");
+
+                        // Validate that token audience matches the OAuthCard's tokenExchangeResource.uri
+                        if (!string.IsNullOrEmpty(oauthInfo.Value.ExchangeResourceUri))
                         {
-                            // Use the caller's original bearer token — the bot's auth connection
-                            // expects a token with its own app as the audience, which matches
-                            // the Token Exchange URL (api://<clientId>).
-                            var callerToken = GetCallerBearerToken();
-                            string ssoToken;
-                            if (!string.IsNullOrEmpty(callerToken))
-                            {
-                                _logger.LogDebug("Using caller's original bearer token for reactive SSO");
-                                ssoToken = callerToken;
-                            }
-                            else
-                            {
-                                _logger.LogDebug("No caller bearer token, falling back to OBO");
-                                ssoToken = await ExchangeTokenOboAsync(cancellationToken);
-                            }
+                            _logger.LogDebug(
+                                "OAuthCard requested resource URI: {Uri}. " +
+                                "Caller's token should have matching audience.",
+                                oauthInfo.Value.ExchangeResourceUri);
+                        }
 
-                            await SendTokenExchangeAsync(token, conversationId, userId,
-                                oauthInfo.Value.ConnectionName,
-                                oauthInfo.Value.ExchangeResourceId,
-                                ssoToken, cancellationToken);
+                        var accepted = await SendTokenExchangeAsync(token, conversationId, userId,
+                            oauthInfo.Value.ConnectionName,
+                            oauthInfo.Value.ExchangeResourceId,
+                            callerToken, cancellationToken);
 
+                        if (accepted)
+                        {
                             awaitingPostExchange = true;
-                            // Extend deadline after successful exchange
                             deadline = DateTime.UtcNow + timeout;
-                            await Task.Delay(pollingInterval, cancellationToken);
-                            continue;
+                            _logger.LogInformation("Token exchange accepted, waiting for post-auth response");
                         }
-                        catch (SsoTokenExchangeException)
+                        else
                         {
-                            throw; // Let auth failures propagate
+                            _logger.LogWarning("Token exchange returned 'retry', SSO not accepted by bot");
+                            // Fall through to normal message handling — bot may show sign-in card
                         }
+
+                        await Task.Delay(pollingInterval, cancellationToken);
+                        continue;
                     }
                 }
 
@@ -416,19 +429,21 @@ public class CopilotStudioChatClient : IChatClient
                     var type = activity?["type"]?.GetValue<string>();
                     var activityText = activity?["text"]?.GetValue<string>();
 
-                    if (type == "message" && fromId != senderId && !string.IsNullOrEmpty(activityText))
+                    // Skip our own activities
+                    if (fromId == senderId) continue;
+
+                    if (type == "message" && !string.IsNullOrEmpty(activityText))
                     {
-                        // If we're awaiting a post-exchange response, skip pre-auth fallback messages
-                        // like "Please sign in" that may arrive in the same batch as the OAuthCard
                         if (awaitingPostExchange)
                         {
-                            // After exchange, return the next real response
-                            _logger.LogInformation("Received post-SSO response from conversation {ConversationId}",
+                            _logger.LogInformation(
+                                "Received post-SSO response from conversation {ConversationId}",
                                 conversationId);
                         }
                         else
                         {
-                            _logger.LogInformation("Received response from conversation {ConversationId}",
+                            _logger.LogInformation(
+                                "Received response from conversation {ConversationId}",
                                 conversationId);
                         }
                         return activityText;
@@ -474,16 +489,19 @@ public class CopilotStudioChatClient : IChatClient
                 if (string.IsNullOrEmpty(connectionName)) continue;
 
                 var exchangeResourceId = card?["tokenExchangeResource"]?["id"]?.GetValue<string>();
+                var exchangeResourceUri = card?["tokenExchangeResource"]?["uri"]?.GetValue<string>();
 
-                _logger.LogInformation("Found OAuthCard: connection={Connection}, exchangeResourceId={Id}",
-                    connectionName, exchangeResourceId ?? "(none)");
-                return new OAuthCardInfo(connectionName, exchangeResourceId);
+                _logger.LogInformation(
+                    "Found OAuthCard: connection={Connection}, exchangeResourceId={Id}, exchangeResourceUri={Uri}",
+                    connectionName, exchangeResourceId ?? "(none)", exchangeResourceUri ?? "(none)");
+                return new OAuthCardInfo(connectionName, exchangeResourceId, exchangeResourceUri);
             }
         }
         return null;
     }
 
-    private readonly record struct OAuthCardInfo(string ConnectionName, string? ExchangeResourceId);
+    private readonly record struct OAuthCardInfo(
+        string ConnectionName, string? ExchangeResourceId, string? ExchangeResourceUri);
 
     #endregion
 }
