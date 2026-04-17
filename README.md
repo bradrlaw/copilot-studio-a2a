@@ -332,7 +332,19 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelin
 
 ### Azure AI Foundry (Portal — No Code)
 
-Connect a Foundry agent to the Copilot Studio A2A server using the built-in A2A tool in the Foundry portal. See [`samples/azure_foundry_portal/README.md`](samples/azure_foundry_portal/README.md) for a step-by-step guide covering connection setup, authentication options (key-based, OAuth, managed identity), and testing.
+Connect a Foundry agent to the Copilot Studio A2A server using the built-in A2A tool in the Foundry portal. See [`samples/azure_foundry_portal/README.md`](samples/azure_foundry_portal/README.md) for a step-by-step guide covering connection setup, authentication options (unauthenticated, OAuth identity passthrough), and testing.
+
+### Azure AI Foundry (Python SDK)
+
+A Python script that programmatically creates a Foundry agent with the A2A tool, connects to Copilot Studio, and runs an interactive streaming chat. See [`samples/azure_foundry_sdk/README.md`](samples/azure_foundry_sdk/README.md) for details.
+
+**Quick start:**
+
+```bash
+pip install -r samples/azure_foundry_sdk/requirements.txt
+export FOUNDRY_PROJECT_ENDPOINT="https://<resource>.ai.azure.com/api/projects/<project>"
+python samples/azure_foundry_sdk/client.py
+```
 
 ### Google ADK Client (LLM-Orchestrated)
 

@@ -185,6 +185,6 @@ If you configured Custom OAuth:
 
 ## Next Steps
 
-- **SDK sample**: For a programmatic approach using `azure-ai-projects`, see the [Azure Foundry SDK sample](../azure_foundry_sdk/) (coming soon)
+- **SDK sample**: For a programmatic approach using `azure-ai-projects`, see the [Azure Foundry SDK sample](../azure_foundry_sdk/)
 - **Authentication deep dive**: See [docs/authentication.md](../../docs/authentication.md) for full Entra ID and SSO configuration
 - **Architecture**: See [docs/architecture.md](../../docs/architecture.md) for system diagrams
