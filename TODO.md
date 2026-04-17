@@ -60,7 +60,7 @@ Planned enhancements and improvements for the Copilot Studio A2A Server.
 
 ## Documentation
 
-- [ ] **Architecture diagram** — Add a visual diagram (Mermaid or SVG) showing the request flow
+- [x] **Architecture diagram** — Mermaid diagrams showing high-level overview, SSO sequence flow, and deployment architecture. See [docs/architecture.md](docs/architecture.md)
 - [ ] **Contributing guide** — Add CONTRIBUTING.md with dev setup, coding standards, and PR process
 - [ ] **Changelog** — Start a CHANGELOG.md to track releases
 - [ ] **Additional sample clients** — Add samples for other A2A client frameworks (Semantic Kernel, LangGraph, CrewAI)

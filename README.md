@@ -10,6 +10,8 @@ This application acts as a bridge between the A2A protocol and Microsoft Copilot
 A2A Client ──JSON-RPC 2.0──▶ This Server ──Direct Line API──▶ Copilot Studio Agent
 ```
 
+> 📐 See [docs/architecture.md](docs/architecture.md) for detailed diagrams including the SSO token exchange flow.
+
 ### Request Flow
 
 1. An A2A client sends a JSON-RPC 2.0 `message/send` request to `/a2a/copilot-studio`
@@ -32,6 +34,7 @@ Other A2A agents discover this one by calling `GET /a2a/copilot-studio/v1/card`,
 │   ├── CopilotStudioChatClient.cs      # IChatClient implementation proxying to Direct Line API
 │   └── CopilotStudioOptions.cs         # Strongly-typed configuration (bound to appsettings)
 ├── docs/
+│   ├── architecture.md                 # Architecture diagrams (Mermaid)
 │   └── authentication.md               # Authentication setup guide (Entra ID / Azure AD)
 ├── appsettings.json                    # Default configuration (endpoints, polling, agent card)
 ├── appsettings.Development.json        # Development overrides
