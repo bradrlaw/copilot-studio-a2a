@@ -16,15 +16,23 @@ Usage:
        export GOOGLE_API_KEY=your-gemini-api-key      (macOS/Linux)
        $env:GOOGLE_API_KEY = "your-gemini-api-key"    (PowerShell)
 
-    3. Run this script:
+    3. (Optional) If the A2A server has auth enabled, set a bearer token:
+       $env:A2A_BEARER_TOKEN = az account get-access-token --resource "api://<client-id>" --query accessToken -o tsv
+
+    4. Run this script:
        python client.py
 
-    4. Or run with ADK's interactive web UI:
+    5. Or run with ADK's interactive web UI:
+       cd ..   # must run from parent directory of agent folder
        adk web .
 """
 
 import asyncio
+import os
 
+import httpx
+from a2a.client.client import ClientConfig
+from a2a.client.client_factory import ClientFactory
 from google.adk.agents import Agent
 from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 from google.adk.runners import Runner
@@ -35,14 +43,32 @@ from google.genai import types
 COPILOT_STUDIO_A2A_URL = "http://localhost:5173/a2a/copilot-studio/v1/card"
 
 
+def _build_a2a_client_factory() -> ClientFactory | None:
+    """Build an A2A client factory with auth headers if a bearer token is set."""
+    token = os.environ.get("A2A_BEARER_TOKEN")
+    if not token:
+        return None
+
+    http_client = httpx.AsyncClient(
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=600.0,
+    )
+    return ClientFactory(ClientConfig(httpx_client=http_client))
+
+
 def build_agent() -> Agent:
     """Build an orchestrator agent that delegates to Copilot Studio via A2A."""
+
+    factory = _build_a2a_client_factory()
+    if factory:
+        print("[auth] Using bearer token from A2A_BEARER_TOKEN env var")
 
     copilot_studio_agent = RemoteA2aAgent(
         name="copilot_studio_banking",
         agent_card=COPILOT_STUDIO_A2A_URL,
         description="A virtual banking assistant powered by Copilot Studio. "
         "Handles questions about branch hours, account inquiries, and general banking help.",
+        a2a_client_factory=factory,
     )
 
     root_agent = Agent(

@@ -274,8 +274,9 @@ Expected response:
 | Error | Cause | Fix |
 |---|---|---|
 | `Failed to generate Direct Line token` | Missing or invalid Direct Line secret | Verify secret with `dotnet user-secrets list` |
-| `IntegratedAuthenticationNotSupportedInChannel` | Copilot Studio agent has authentication enabled | In Copilot Studio → **Settings → Security → Authentication** → set to **No authentication** |
+| `IntegratedAuthenticationNotSupportedInChannel` | Copilot Studio agent uses an incompatible auth provider | Switch to **"Microsoft Entra ID v2 with client secrets"** — see [docs/authentication.md](docs/authentication.md) |
 | `No response from Copilot Studio within 60 seconds` | Bot didn't reply in time | Increase `ResponseTimeoutSeconds` in `appsettings.json`, or check that the agent is published |
+| Bot says "I'll need you to sign in" | SSO not configured or misconfigured | Follow the Phase 2 setup in [docs/authentication.md](docs/authentication.md) |
 
 ### PowerShell (Windows)
 
