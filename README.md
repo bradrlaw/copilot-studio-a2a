@@ -330,6 +330,10 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelin
 
 ## Sample Clients
 
+### Azure AI Foundry (Portal — No Code)
+
+Connect a Foundry agent to the Copilot Studio A2A server using the built-in A2A tool in the Foundry portal. See [`samples/azure_foundry_portal/README.md`](samples/azure_foundry_portal/README.md) for a step-by-step guide covering connection setup, authentication options (key-based, OAuth, managed identity), and testing.
+
 ### Google ADK Client (LLM-Orchestrated)
 
 A full Google ADK orchestrator that uses Gemini to decide when to delegate to the Copilot Studio agent. See [`samples/google_adk_client/README.md`](samples/google_adk_client/README.md) for details.
