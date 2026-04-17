@@ -2,6 +2,7 @@ using A2A.AspNetCore;
 using CopilotStudioA2A.Services;
 using Microsoft.Agents.AI.Hosting;
 using Microsoft.Extensions.AI;
+using Microsoft.Identity.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,18 @@ builder.Services.AddSwaggerGen();
 // Bind Copilot Studio configuration
 builder.Services.Configure<CopilotStudioOptions>(
     builder.Configuration.GetSection("CopilotStudio"));
+
+// Required for CopilotStudioChatClient to access the authenticated user
+builder.Services.AddHttpContextAccessor();
+
+// Configure Entra ID bearer token auth when auth passthrough is enabled
+var authEnabled = builder.Configuration.GetValue<bool>("CopilotStudio:EnableAuthPassthrough");
+if (authEnabled)
+{
+    builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration, "CopilotStudio:AzureAd");
+    builder.Services.AddAuthorizationBuilder()
+        .AddPolicy("A2AAuth", policy => policy.RequireAuthenticatedUser());
+}
 
 // Register the Direct Line chat client that proxies to Copilot Studio
 builder.Services.AddHttpClient<CopilotStudioChatClient>();
@@ -26,6 +39,29 @@ var app = builder.Build();
 app.MapOpenApi();
 app.UseSwagger();
 app.UseSwaggerUI();
+
+if (authEnabled)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
+
+    // Enforce auth on A2A POST requests (JSON-RPC handler).
+    // The agent card (GET) stays public so clients can discover auth requirements.
+    // We use middleware because MapA2A's return value doesn't reliably apply
+    // RequireAuthorization to the internal JSON-RPC POST handler.
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/a2a/copilot-studio")
+            && context.Request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase)
+            && context.User.Identity?.IsAuthenticated != true)
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.Headers.WWWAuthenticate = "Bearer";
+            return;
+        }
+        await next();
+    });
+}
 
 // Health check
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));

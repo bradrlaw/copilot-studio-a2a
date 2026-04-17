@@ -30,4 +30,25 @@ public class CopilotStudioOptions
     /// Milliseconds between polls to Direct Line for new activities.
     /// </summary>
     public int PollingIntervalMs { get; set; } = 500;
+
+    /// <summary>
+    /// When true, the server validates Entra ID bearer tokens on the A2A endpoint
+    /// and passes the authenticated user identity to Copilot Studio via Direct Line.
+    /// Default is false for backward compatibility with "No authentication" agents.
+    /// </summary>
+    public bool EnableAuthPassthrough { get; set; } = false;
+
+    /// <summary>
+    /// The Entra ID (Azure AD) tenant ID for token validation.
+    /// Required when EnableAuthPassthrough is true.
+    /// Example: "your-tenant-id" or "common" for multi-tenant.
+    /// </summary>
+    public string? TenantId { get; set; }
+
+    /// <summary>
+    /// The Entra ID application (client) ID that represents this A2A server.
+    /// Used as the expected audience when validating incoming bearer tokens.
+    /// Required when EnableAuthPassthrough is true.
+    /// </summary>
+    public string? ClientId { get; set; }
 }

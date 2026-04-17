@@ -46,8 +46,17 @@ Secrets (Direct Line secret or token endpoint URL) should be stored via `dotnet 
 - `TokenEndpoint` — optional regional token endpoint (used instead of secret when set)
 - `ResponseTimeoutSeconds` — max wait for bot response (default: 60)
 - `PollingIntervalMs` — Direct Line polling interval (default: 500ms)
+- `EnableAuthPassthrough` — enable Entra ID bearer token validation on A2A endpoints (default: `false`)
+- `AzureAd` — nested config for Entra ID auth (`Instance`, `TenantId`, `ClientId`); only used when `EnableAuthPassthrough` is `true`
 
 The `A2A` config section controls the agent card metadata (`AgentName`, `AgentDescription`, `AgentUrl`).
+
+### Authentication
+
+When `EnableAuthPassthrough` is `true`:
+- A2A endpoints require a valid Entra ID bearer token
+- The server derives an opaque per-user ID (SHA-256 of tenant+subject) and passes it as the Direct Line `user.id`
+- See [docs/authentication.md](../docs/authentication.md) for the full setup guide
 
 ## Coding Conventions
 

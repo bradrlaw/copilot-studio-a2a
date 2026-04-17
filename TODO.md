@@ -4,8 +4,9 @@ Planned enhancements and improvements for the Copilot Studio A2A Server.
 
 ## Security & Authentication
 
-- [ ] **A2A endpoint authentication** — Add API key or Bearer token auth to protect the `/a2a/copilot-studio` endpoint so only authorized clients can send messages
-- [ ] **Authentication passthrough** — Allow A2A clients to pass user identity/credentials through to Copilot Studio (e.g., OAuth tokens for authenticated bot scenarios), removing the current "No authentication" requirement
+- [x] **A2A endpoint authentication** — Entra ID (Azure AD) bearer token validation on A2A endpoints (opt-in via `EnableAuthPassthrough`). See [docs/authentication.md](docs/authentication.md)
+- [x] **Authentication passthrough (Phase 1)** — Validated user identity is derived from JWT claims and passed as an opaque user ID to Direct Line. See [docs/authentication.md](docs/authentication.md)
+- [ ] **Authentication passthrough (Phase 2: SSO)** — On-Behalf-Of token exchange to forward caller identity to Copilot Studio for downstream API access
 - [ ] **Rate limiting** — Add per-client rate limiting to prevent abuse of the A2A endpoint
 - [ ] **A2A security schemes in agent card** — Populate the `securitySchemes` and `security` fields in the agent card so clients know what auth is required
 

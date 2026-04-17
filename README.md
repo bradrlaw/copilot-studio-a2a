@@ -31,6 +31,8 @@ Other A2A agents discover this one by calling `GET /a2a/copilot-studio/v1/card`,
 ├── Services/
 │   ├── CopilotStudioChatClient.cs      # IChatClient implementation proxying to Direct Line API
 │   └── CopilotStudioOptions.cs         # Strongly-typed configuration (bound to appsettings)
+├── docs/
+│   └── authentication.md               # Authentication setup guide (Entra ID / Azure AD)
 ├── appsettings.json                    # Default configuration (endpoints, polling, agent card)
 ├── appsettings.Development.json        # Development overrides
 ├── CopilotStudioA2A.csproj             # .NET 10 project file and NuGet dependencies
@@ -82,6 +84,20 @@ Customize the agent card metadata in `appsettings.json`. The `AgentUrl` should m
     "AgentUrl": "https://your-deployed-url.com/a2a/copilot-studio"
   }
 }
+```
+
+### Authentication (Optional)
+
+You can protect the A2A endpoints with Microsoft Entra ID (Azure AD) bearer token authentication. When enabled, callers must present a valid token, and the server derives a per-user identity for Direct Line.
+
+See **[docs/authentication.md](docs/authentication.md)** for the full setup guide.
+
+Quick start:
+
+```bash
+dotnet user-secrets set "CopilotStudio:EnableAuthPassthrough" "true"
+dotnet user-secrets set "CopilotStudio:AzureAd:TenantId" "<your-tenant-id>"
+dotnet user-secrets set "CopilotStudio:AzureAd:ClientId" "<your-client-id>"
 ```
 
 ### Tuning
