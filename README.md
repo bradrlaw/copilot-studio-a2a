@@ -306,6 +306,22 @@ Invoke-RestMethod -Uri http://localhost:5173/a2a/copilot-studio `
   -Method Post -ContentType "application/json" -Body $body
 ```
 
+## Contributing
+
+This project welcomes contributions and suggestions. Most contributions require you to agree to a
+Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
+the rights to use your contribution. For details, visit [https://cla.opensource.microsoft.com](https://cla.opensource.microsoft.com).
+
+When you submit a pull request, a CLA bot will automatically determine whether you need to provide
+a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
+provided by the bot. You will only need to do this once across all repos using our CLA.
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
+For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
+
 ## Known Limitations
 
 - The A2A NuGet package (`Microsoft.Agents.AI.Hosting.A2A.AspNetCore`) is a **preview** release — APIs may change in future versions
@@ -420,3 +436,19 @@ Example skipping the Direct Line call (tests health + agent card only):
 ```bash
 python samples/test_server.py --skip-send
 ```
+
+## Security
+
+If you believe you have found a security vulnerability, please see [SECURITY.md](SECURITY.md) for responsible disclosure instructions. **Do not report security vulnerabilities through public GitHub issues.**
+
+## Trademarks
+
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
+trademarks or logos is subject to and must follow
+[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
+Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
+Any use of third-party trademarks or logos are subject to those third-party's policies.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
