@@ -6,6 +6,7 @@ This guide explains how to configure authenticated access to the Copilot Studio 
 |-------|-------------|-------------------------------|
 | **Phase 1** | Validates caller tokens, blocks unauthenticated requests, passes opaque user ID to Direct Line | No — agent can use "No authentication" |
 | **Phase 2** | Everything in Phase 1 + configures Copilot Studio to recognize authenticated users via SSO | Yes — agent must use "Entra ID v2 with client secrets" |
+| **SDK Mode** | OBO token exchange for API auth + automatic SSO via SDK | Yes — agent must use "Entra ID v2 with client secrets" |
 
 ## Overview
 
@@ -254,6 +255,118 @@ No additional A2A server configuration is needed beyond Phase 1. The SSO token e
 
 ---
 
+## SDK Mode: Copilot Studio SDK Authentication
+
+SDK mode uses the Copilot Studio SDK (`Microsoft.CopilotStudio.Client`) to communicate with your agent via the Direct-to-Engine API, instead of Direct Line. This mode replaces Direct Line with a more direct integration path. It builds on Phase 1 — complete Phase 1 first.
+
+### How SDK Auth Works
+
+In SDK mode, authentication has two layers:
+
+1. **API Authentication (OBO)**: The caller's bearer token is exchanged via MSAL's On-Behalf-Of flow for a Copilot Studio API token with `CopilotStudio.Copilots.Invoke` scope. This authenticates the SDK's HTTP calls to the Copilot Studio Direct-to-Engine API.
+2. **Bot-Level SSO**: The bot's Sign In topic still triggers and sends an OAuthCard. The server intercepts it and sends a `signin/tokenExchange` invoke via the SDK's `ExecuteAsync`, passing the caller's original bearer token. This authenticates the user within the bot's auth flow.
+
+```
+Caller (A2A Client)
+  │  Authorization: Bearer <Entra ID token>
+  ▼
+┌──────────────────────────────────────────────┐
+│      Copilot Studio A2A Server               │
+│                                              │
+│  1. Validate JWT (Entra ID)                  │
+│  2. OBO exchange → CopilotStudio API token   │
+│  3. SDK connects to Direct-to-Engine API     │
+│  4. Send user's message via ExecuteAsync     │
+│  5. Bot sends OAuthCard challenge            │
+│  6. Server intercepts OAuthCard              │
+│  7. Server sends signin/tokenExchange        │
+│     via ExecuteAsync with caller's token     │
+│  8. Bot receives user's identity + token     │
+│  9. Bot responds with authenticated data     │
+└──────────────────────────────────────────────┘
+```
+
+### Prerequisites (in addition to Phase 1)
+
+- App registration needs:
+  - A **client secret** (for OBO) — if you completed Phase 2, you already have this
+  - The **CopilotStudio.Copilots.Invoke** delegated permission from Power Platform API (with admin consent)
+- Copilot Studio agent metadata:
+  - **Environment ID** and **Schema Name** from Settings → Advanced → Metadata
+
+### Step SDK.1: Add the Power Platform API Permission
+
+1. Azure Portal → App registrations → your app → **API permissions**
+2. Click **Add a permission**
+3. Switch to the **APIs my organization uses** tab
+4. Search for **Power Platform API**
+5. Select **Delegated permissions**
+6. Check **CopilotStudio.Copilots.Invoke**
+7. Click **Add permissions**
+8. Click **Grant admin consent for \<tenant\>**
+
+### Step SDK.2: Get Agent Metadata
+
+1. Open your agent in [Copilot Studio](https://copilotstudio.microsoft.com)
+2. Go to **Settings → Advanced → Metadata**
+3. Note the **Environment ID** and **Schema Name**
+
+### Step SDK.3: Configure the A2A Server
+
+Store configuration securely using [user-secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) for local development:
+
+```bash
+dotnet user-secrets set "CopilotStudio:ConnectionMode" "CopilotStudioSdk"
+dotnet user-secrets set "CopilotStudio:EnvironmentId" "<environment-id>"
+dotnet user-secrets set "CopilotStudio:SchemaName" "<schema-name>"
+dotnet user-secrets set "CopilotStudio:AzureAd:TenantId" "<tenant-id>"
+dotnet user-secrets set "CopilotStudio:AzureAd:ClientId" "<client-id>"
+dotnet user-secrets set "CopilotStudio:AzureAd:ClientSecret" "<client-secret>"
+```
+
+For production deployments, use environment variables:
+
+```bash
+CopilotStudio__ConnectionMode=CopilotStudioSdk
+CopilotStudio__EnvironmentId=<environment-id>
+CopilotStudio__SchemaName=<schema-name>
+CopilotStudio__AzureAd__TenantId=<tenant-id>
+CopilotStudio__AzureAd__ClientId=<client-id>
+CopilotStudio__AzureAd__ClientSecret=<client-secret>
+```
+
+### Step SDK.4: Test SDK Mode
+
+1. Start the server:
+   ```bash
+   dotnet run
+   ```
+
+2. Check the health endpoint to confirm SDK mode:
+   ```bash
+   curl -s http://localhost:5173/a2a/copilot-studio/health | jq .
+   # Look for: "mode": "CopilotStudioSdk"
+   ```
+
+3. Get a token and send a request:
+   ```bash
+   TOKEN=$(az account get-access-token --resource "api://<client-id>" --query accessToken -o tsv)
+
+   curl -X POST http://localhost:5173/a2a/copilot-studio \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer $TOKEN" \
+     -d '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"m1","role":"user","parts":[{"kind":"text","text":"Hello"}]}}}'
+   ```
+
+4. In the server logs, you should see:
+   - `connectionMode=CopilotStudioSdk` — SDK mode is active
+   - `OBO token acquired` — the OBO exchange succeeded
+   - `Found OAuthCard` — the bot sent an authentication challenge
+   - `Token exchange accepted` — the SSO token was successfully exchanged
+   - `Received post-SSO response` — the bot responded after authentication
+
+---
+
 ## Using the Google ADK Web UI with Authentication
 
 When authentication is enabled, the ADK client needs the bearer token passed as an environment variable:
@@ -291,7 +404,12 @@ All settings are under the `CopilotStudio` section in `appsettings.json` or pref
 | `AzureAd:Instance` | No | `https://login.microsoftonline.com/` | Entra ID authority base URL |
 | `AzureAd:TenantId` | Phase 1+ | *(empty)* | Your Entra ID tenant ID (GUID) |
 | `AzureAd:ClientId` | Phase 1+ | *(empty)* | App Registration client ID (GUID) |
-| `AzureAd:ClientSecret` | No | *(empty)* | App Registration client secret (only needed in Copilot Studio config, not in the A2A server) |
+| `AzureAd:ClientSecret` | SDK mode | *(empty)* | App Registration client secret (required for OBO token exchange in SDK mode) |
+| `ConnectionMode` | No | `DirectLine` | Connection mode: `DirectLine` or `CopilotStudioSdk` |
+| `EnvironmentId` | SDK mode | *(empty)* | Power Platform environment ID (from Copilot Studio → Settings → Advanced → Metadata) |
+| `SchemaName` | SDK mode | *(empty)* | Copilot Studio agent schema name (from Settings → Advanced → Metadata) |
+| `Cloud` | No | `Prod` | Power Platform cloud: `Prod`, `Gov`, `High`, `DoD`, `Mooncake` |
+| `DirectConnectUrl` | No | *(empty)* | Alternative to EnvironmentId + SchemaName; full Direct-to-Engine URL |
 
 ### Copilot Studio Settings (for Phase 2)
 
@@ -375,6 +493,22 @@ When authentication is **disabled** (default), the server uses a static user ID,
 - The bot sees a unique user ID but doesn't have the user's name, email, or access tokens
 - Full SSO identity propagation requires Phase 2 configuration plus additional Copilot Studio topic design
 
+### `Invalid cluster category value: Unknown` (SDK mode)
+
+- Set `CopilotStudio:Cloud` to `Prod` (or the appropriate sovereign cloud value: `Gov`, `High`, `DoD`, `Mooncake`)
+- The SDK needs the cloud to resolve the correct Direct-to-Engine API endpoint
+
+### `AADSTS65001` or consent errors on OBO (SDK mode)
+
+- Grant admin consent for `CopilotStudio.Copilots.Invoke` on the Power Platform API
+- Go to Azure Portal → App registrations → your app → API permissions → verify the permission shows ✅ **Granted** status
+- If using a multitenant app, the admin of the user's tenant must also grant consent
+
+### `SDK mode requires an authenticated caller` (SDK mode)
+
+- SDK mode always requires a bearer token; anonymous access is not supported
+- Ensure `EnableAuthPassthrough` is `true` and you are passing a valid `Authorization: Bearer <token>` header
+
 ---
 
 ## Known Limitations
@@ -383,5 +517,7 @@ When authentication is **disabled** (default), the server uses a static user ID,
 - **Token expiration**: Bearer tokens typically expire after 1 hour. Long-running clients should refresh tokens periodically. The ADK web UI requires restarting with a fresh `A2A_BEARER_TOKEN` when the token expires.
 - **Single auth provider**: Only "Microsoft Entra ID v2 with client secrets" is supported. Federated Credentials and other providers cause `IntegratedAuthenticationNotSupportedInChannel` errors.
 - **SSO adds latency**: The OAuthCard challenge/response adds approximately 2-5 seconds to the first response in each conversation due to the token exchange round trip.
+- **SDK mode requires a client secret**: OBO token exchange in SDK mode requires a client secret; certificate-based authentication is not yet supported.
+- **SDK S2S not supported**: Service-to-service (S2S) authentication for SDK mode is in private preview and not supported by this bridge.
 
 See [TODO.md](../TODO.md) for the full roadmap including planned SSO improvements.
