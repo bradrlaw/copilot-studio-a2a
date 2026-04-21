@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Copilot Studio SDK Connection Mode** — Alternative to Direct Line using the `Microsoft.Agents.CopilotStudio.Client` SDK (Direct-to-Engine API). Set `ConnectionMode: CopilotStudioSdk` to enable. Uses SSE streaming instead of HTTP polling for lower latency.
+- **OBO (On-Behalf-Of) Token Exchange** — SDK mode exchanges the caller's bearer token for a Copilot Studio API token via MSAL, enabling authenticated API calls with the `CopilotStudio.Copilots.Invoke` scope.
+- **SDK SSO Token Exchange** — Detects OAuthCard challenges in SDK activity streams and performs `signin/tokenExchange` via the SDK's `ExecuteAsync`, enabling full SSO in SDK mode.
+- **Power Platform Cloud Configuration** — New `Cloud` setting (default: `Prod`) supports sovereign clouds (Gov, High, DoD, Mooncake).
+- **Azure AI Foundry Sample Clients** — Portal-based (no code) and Python SDK samples for connecting Foundry agents to the A2A server.
+
+### Changed
+
+- `ConnectionMode` enum added to `CopilotStudioOptions` — controls whether Direct Line or SDK is used. Defaults to `DirectLine` for backward compatibility.
+- Health endpoint now returns `{ "status": "healthy", "mode": "<ConnectionMode>" }`.
+- SDK mode automatically enables authentication (callers must present a valid bearer token).
+
+### Technical Details
+
+- New file: `Services/CopilotStudioSdkChatClient.cs` — IChatClient implementation for SDK mode
+- New NuGet packages: `Microsoft.Agents.CopilotStudio.Client` (1.4.83), `Microsoft.Identity.Client` (4.83.3)
+- `CopilotStudioOptions` extended with SDK settings: `ConnectionMode`, `EnvironmentId`, `SchemaName`, `DirectConnectUrl`, `Cloud`
+- Fresh `CopilotClient` created per request to avoid conversation state bleed (SDK client is stateful)
+- OAuthCard deserialization uses case-insensitive JSON parsing to handle SDK's `JsonElement` content
+
 ## [1.0.0] - 2026-04-17
 
 Initial stable release of the Copilot Studio A2A bridge server.

@@ -4,10 +4,14 @@ Exposes a Microsoft Copilot Studio agent as an [A2A (Agent-to-Agent) protocol](h
 
 ## How It Works
 
-This application acts as a bridge between the A2A protocol and Microsoft Copilot Studio. A2A clients communicate with this server using JSON-RPC 2.0, and the server translates those requests into Bot Framework Direct Line API calls to reach the Copilot Studio agent.
+This application acts as a bridge between the A2A protocol and Microsoft Copilot Studio. A2A clients communicate with this server using JSON-RPC 2.0, and the server translates those requests into calls to the Copilot Studio agent using one of two connection modes:
+
+- **Direct Line** (default) — communicates via the Bot Framework Direct Line API
+- **Copilot Studio SDK** — uses the `Microsoft.Agents.CopilotStudio.Client` SDK for direct-to-engine API calls
 
 ```
 A2A Client ──JSON-RPC 2.0──▶ This Server ──Direct Line API──▶ Copilot Studio Agent
+                                         ──Copilot Studio SDK──▶
 ```
 
 > 📐 See [docs/architecture.md](docs/architecture.md) for detailed diagrams including the SSO token exchange flow.
@@ -15,11 +19,9 @@ A2A Client ──JSON-RPC 2.0──▶ This Server ──Direct Line API──�
 ### Request Flow
 
 1. An A2A client sends a JSON-RPC 2.0 `message/send` request to `/a2a/copilot-studio`
-2. The Microsoft Agent Framework (`MapA2A()`) handles JSON-RPC 2.0 natively and routes the request to **CopilotStudioChatClient**, which:
-   - Exchanges credentials for a **Direct Line token** (via secret or regional token endpoint)
-   - Opens a new Direct Line **conversation**
-   - Sends the user's message as a Direct Line **activity**
-   - **Polls** for the bot's reply (configurable timeout and interval)
+2. The Microsoft Agent Framework (`MapA2A()`) handles JSON-RPC 2.0 natively and routes the request to the configured `IChatClient` implementation:
+   - **Direct Line mode** → **CopilotStudioChatClient** exchanges credentials for a Direct Line token (via secret or regional token endpoint), opens a conversation, sends the message as a Direct Line activity, and polls for the bot's reply
+   - **Copilot Studio SDK mode** → **CopilotStudioSdkChatClient** performs an OBO (On Behalf Of) token exchange using the caller's bearer token, then sends the message directly to the Copilot Studio engine via the SDK
 3. The framework wraps the response into a JSON-RPC 2.0 envelope and returns it to the client
 
 ### Agent Discovery
@@ -31,8 +33,9 @@ Other A2A agents discover this one by calling `GET /a2a/copilot-studio/v1/card`,
 ```
 ├── Program.cs                          # App startup, DI, endpoint mapping, agent card config
 ├── Services/
-│   ├── CopilotStudioChatClient.cs      # IChatClient implementation proxying to Direct Line API
-│   └── CopilotStudioOptions.cs         # Strongly-typed configuration (bound to appsettings)
+│   ├── CopilotStudioChatClient.cs      # IChatClient for Direct Line mode
+│   ├── CopilotStudioSdkChatClient.cs   # IChatClient for Copilot Studio SDK mode
+│   └── CopilotStudioOptions.cs         # Strongly-typed configuration (both modes)
 ├── docs/
 │   ├── architecture.md                 # Architecture diagrams (Mermaid)
 │   └── authentication.md               # Authentication setup guide (Entra ID / Azure AD)
@@ -46,7 +49,7 @@ Other A2A agents discover this one by calling `GET /a2a/copilot-studio/v1/card`,
 ## Prerequisites
 
 - [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- A published Copilot Studio agent with the **Direct Line** channel enabled
+- A published Copilot Studio agent with the **Direct Line** channel enabled (for Direct Line mode) or with the **Copilot Studio SDK** configured (for SDK mode)
 
 ## Configuration
 
@@ -74,6 +77,41 @@ dotnet user-secrets set "CopilotStudio:TokenEndpoint" "https://defaultXXXXXX.XX.
 ```
 
 When a token endpoint is configured, it takes priority over the Direct Line secret.
+
+### Connection Mode
+
+The server supports two connection modes, controlled by the `ConnectionMode` setting:
+
+| Mode | Value | Description |
+|------|-------|-------------|
+| **Direct Line** (default) | `DirectLine` | Uses Bot Framework Direct Line API. Requires `DirectLineSecret` or `TokenEndpoint`. |
+| **Copilot Studio SDK** | `CopilotStudioSdk` | Uses the Copilot Studio SDK (direct-to-engine API). Requires `EnvironmentId` + `SchemaName` and authenticated callers. |
+
+#### Copilot Studio SDK Configuration
+
+To use the SDK mode:
+
+1. In Copilot Studio → **Settings → Advanced → Metadata**, note the **Environment ID** and **Schema Name**
+2. In Azure Portal → App registrations → your app → **API permissions**, add the **CopilotStudio.Copilots.Invoke** delegated permission from **Power Platform API** and grant admin consent
+3. Configure the server:
+
+```bash
+dotnet user-secrets set "CopilotStudio:ConnectionMode" "CopilotStudioSdk"
+dotnet user-secrets set "CopilotStudio:EnvironmentId" "<environment-id>"
+dotnet user-secrets set "CopilotStudio:SchemaName" "<schema-name>"
+dotnet user-secrets set "CopilotStudio:AzureAd:TenantId" "<tenant-id>"
+dotnet user-secrets set "CopilotStudio:AzureAd:ClientId" "<client-id>"
+dotnet user-secrets set "CopilotStudio:AzureAd:ClientSecret" "<client-secret>"
+```
+
+SDK mode always requires authentication (callers must present a valid bearer token). The server performs an OBO (On Behalf Of) token exchange to obtain a Copilot Studio API token.
+
+**Optional settings:**
+
+| Setting | Default | Description |
+|---|---|---|
+| `Cloud` | `Prod` | Power Platform cloud. Use `Gov`, `High`, `DoD`, or `Mooncake` for sovereign clouds. |
+| `DirectConnectUrl` | *(empty)* | Alternative to EnvironmentId + SchemaName for custom endpoints. |
 
 ### A2A Agent Card
 
@@ -105,13 +143,18 @@ dotnet user-secrets set "CopilotStudio:AzureAd:ClientId" "<your-client-id>"
 
 ### Tuning
 
-The following settings in the `CopilotStudio` section of `appsettings.json` control Direct Line communication behavior:
+The following settings in the `CopilotStudio` section of `appsettings.json` control communication behavior:
 
 | Setting | Default | Description |
 |---|---|---|
-| `DirectLineEndpoint` | `https://directline.botframework.com/v3/directline` | Base URL for the Direct Line API |
-| `ResponseTimeoutSeconds` | `60` | Maximum seconds to wait for a bot response before timing out |
-| `PollingIntervalMs` | `500` | Milliseconds between polls to Direct Line for new activities |
+| `ConnectionMode` | `DirectLine` | Connection mode: `DirectLine` or `CopilotStudioSdk` |
+| `DirectLineEndpoint` | `https://directline.botframework.com/v3/directline` | Base URL for the Direct Line API (Direct Line mode only) |
+| `ResponseTimeoutSeconds` | `60` | Maximum seconds to wait for a bot response before timing out (Direct Line mode only) |
+| `PollingIntervalMs` | `500` | Milliseconds between polls to Direct Line for new activities (Direct Line mode only) |
+| `EnvironmentId` | *(empty)* | Power Platform environment ID (SDK mode only) |
+| `SchemaName` | *(empty)* | Copilot Studio agent schema name (SDK mode only) |
+| `Cloud` | `Prod` | Power Platform cloud environment (SDK mode only) |
+| `DirectConnectUrl` | *(empty)* | Custom direct-connect endpoint URL (SDK mode only) |
 
 ## Running Locally
 
@@ -223,7 +266,7 @@ curl http://localhost:5173/health
 Expected response:
 
 ```json
-{ "status": "healthy" }
+{ "status": "healthy", "mode": "DirectLine" }
 ```
 
 ### 3. Agent Card Discovery (no credentials needed)
@@ -327,6 +370,7 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelin
 - The A2A NuGet package (`Microsoft.Agents.AI.Hosting.A2A.AspNetCore`) is a **preview** release — APIs may change in future versions
 - Direct Line does not support true streaming, so the `Streaming` capability is set to `false` in the agent card
 - Each A2A request opens a new Direct Line conversation — there is no conversation persistence across requests
+- The Copilot Studio SDK connection mode requires authenticated callers — anonymous access is not supported in SDK mode
 
 ## Sample Clients
 

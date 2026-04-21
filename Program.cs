@@ -13,22 +13,41 @@ builder.Services.AddSwaggerGen();
 builder.Services.Configure<CopilotStudioOptions>(
     builder.Configuration.GetSection("CopilotStudio"));
 
-// Required for CopilotStudioChatClient to access the authenticated user
+// Required for chat clients to access the authenticated user
 builder.Services.AddHttpContextAccessor();
 
-// Configure Entra ID bearer token auth when auth passthrough is enabled
+// Determine connection mode
+var connectionMode = builder.Configuration.GetValue<ConnectionMode>("CopilotStudio:ConnectionMode");
 var authEnabled = builder.Configuration.GetValue<bool>("CopilotStudio:EnableAuthPassthrough");
-if (authEnabled)
+
+// SDK mode always requires authentication
+var requireAuth = authEnabled || connectionMode == ConnectionMode.CopilotStudioSdk;
+
+// Configure Entra ID bearer token auth when required
+if (requireAuth)
 {
     builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration, "CopilotStudio:AzureAd");
     builder.Services.AddAuthorizationBuilder()
         .AddPolicy("A2AAuth", policy => policy.RequireAuthenticatedUser());
 }
 
-// Register the Direct Line chat client that proxies to Copilot Studio
-builder.Services.AddHttpClient<CopilotStudioChatClient>();
-builder.Services.AddSingleton<IChatClient>(sp =>
-    sp.GetRequiredService<CopilotStudioChatClient>());
+// Register the appropriate chat client based on connection mode
+if (connectionMode == ConnectionMode.CopilotStudioSdk)
+{
+    // Register named HttpClient for the Copilot Studio SDK
+    builder.Services.AddHttpClient("copilot-studio-sdk");
+
+    builder.Services.AddSingleton<CopilotStudioSdkChatClient>();
+    builder.Services.AddSingleton<IChatClient>(sp =>
+        sp.GetRequiredService<CopilotStudioSdkChatClient>());
+}
+else
+{
+    // Register the Direct Line chat client that proxies to Copilot Studio
+    builder.Services.AddHttpClient<CopilotStudioChatClient>();
+    builder.Services.AddSingleton<IChatClient>(sp =>
+        sp.GetRequiredService<CopilotStudioChatClient>());
+}
 
 // Register the A2A agent backed by Copilot Studio
 var copilotAgent = builder.AddAIAgent("copilot-studio",
@@ -40,7 +59,7 @@ app.MapOpenApi();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-if (authEnabled)
+if (requireAuth)
 {
     app.UseAuthentication();
     app.UseAuthorization();
@@ -64,7 +83,7 @@ if (authEnabled)
 }
 
 // Health check
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", mode = connectionMode.ToString() }));
 
 // Expose the Copilot Studio agent via A2A protocol
 app.MapA2A(copilotAgent, path: "/a2a/copilot-studio", agentCard: new()
