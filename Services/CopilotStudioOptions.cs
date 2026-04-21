@@ -78,6 +78,12 @@ public class CopilotStudioOptions
     /// </summary>
     public string? DirectConnectUrl { get; set; }
 
+    /// <summary>
+    /// The Power Platform cloud environment. Defaults to "Prod" (commercial/public Azure).
+    /// Other values: "Gov" (GCC), "High" (GCC High), "DoD", "Mooncake" (China), etc.
+    /// </summary>
+    public string Cloud { get; set; } = "Prod";
+
     #endregion
 
     #region Shared settings
