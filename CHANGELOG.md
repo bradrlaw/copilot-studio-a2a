@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-04-21
+
 ### Added
 
 - **Copilot Studio SDK Connection Mode** — Alternative to Direct Line using the `Microsoft.Agents.CopilotStudio.Client` SDK (Direct-to-Engine API). Set `ConnectionMode: CopilotStudioSdk` to enable. Uses SSE streaming instead of HTTP polling for lower latency.
